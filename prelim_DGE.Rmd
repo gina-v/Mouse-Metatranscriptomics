@@ -1,0 +1,191 @@
+---
+title: "Differential Gene Expression of S. enterica Tiphimurium and B. thetaiotamicron"
+output: html_document
+date: "2023-09-15"
+---
+
+## Background
+
+DGE of S. enterica Tiphimurium from the Winters 2017 data. DGE of B. thetaiotamicron from the Winters 2020 paper.
+
+```{r, echo=FALSE}
+library(SummarizedExperiment)
+library(tximeta)
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(pheatmap)
+library(tidyverse)
+library(IHW)
+library(ashr)
+library(ggplot2)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Reading in the featurecounts tables. Files labeled "stm" contain samples 278-1-5 and 279-1-5. The features are for S. Tm. Files labeled "bth" contain samples 278-1-5 and 275-1-5. The features counted are for B. theta.
+
+```{r}
+df_stm_fc = read.delim("stm_counts_updated.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_stm = df_stm_fc[c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam")] #,	"sam.stm1_stm.sorted.bam",	"sam.stm2_stm.sorted.bam", "sam.stm3_stm.sorted.bam",	"sam.stm4_stm.sorted.bam",	"sam.stm5_stm.sorted.bam"
+df_bth_fc = read.delim("bth_counts.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_bth = df_bth_fc[c("sam.ERR3374060_bth.sorted.bam",	"sam.ERR3374061_bth.sorted.bam",	"sam.ERR3374062_bth.sorted.bam",	"sam.ERR3374063_bth.sorted.bam",	"sam.ERR3374064_bth.sorted.bam",	"sam.ERR3374065_bth.sorted.bam",	"sam.ERR3374066_bth.sorted.bam",	"sam.ERR3374067_bth.sorted.bam",	"sam.ERR3374068_bth.sorted.bam",	"sam.ERR3374069_bth.sorted.bam")]
+df_stm_fc
+df_bth_fc
+df_stm
+df_bth
+```
+
+DeSeq2 requires a CV with the samples and experiment conditions.
+
+```{r}
+exp_stm = data.frame(
+  Column1 = c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam"), 
+  Column2 = c("cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "stm", "stm", "stm", "stm", "stm")
+)
+colnames(exp_stm) = c("sample", "condition")
+exp_stm_path = "~/Documents/Prelim_GMMs/exp_stm.csv"
+write.csv(exp_stm, file = exp_stm_path, row.names = FALSE)
+csv_exp_stm = read.csv("exp_stm.csv")
+
+exp_bth = data.frame(
+  Column1 = c("sam/ERR3374060_bth.sorted.bam",	"sam/ERR3374061_bth.sorted.bam",	"sam/ERR3374062_bth.sorted.bam",	"sam/ERR3374063_bth.sorted.bam",	"sam/ERR3374064_bth.sorted.bam",	"sam/ERR3374065_bth.sorted.bam",	"sam/ERR3374066_bth.sorted.bam",	"sam/ERR3374067_bth.sorted.bam",	"sam/ERR3374068_bth.sorted.bam",	"sam/ERR3374069_bth.sorted.bam"),
+  Column2 = c("cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm" )
+)
+colnames(exp_bth) = c("sample", "condition")
+exp_bth_path = "~/Documents/Prelim_GMMs/exp_bth.csv"
+write.csv(exp_bth, file = exp_bth_path, row.names = FALSE)
+csv_exp_bth = read.csv("exp_bth.csv")
+
+csv_exp_stm
+csv_exp_bth
+```
+
+DeSeq2 objects
+
+```{r}
+dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, design = ~ condition)
+dds_bth = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
+```
+
+Results
+
+```{r}
+#keeping only genes with more than 10 counts
+keep_stm = rowSums(counts(dds_stm)) >= 10 
+dds_stm = dds_stm[keep_stm, ]
+keep_bth = rowSums(counts(dds_bth)) >= 10
+dds_bth = dds_bth[keep_bth, ]
+
+#setting factor levels
+dds_stm$condition = factor(dds_stm$condition, levels = c("stm","cs/bt/stm"))
+dds_bth$condition = factor(dds_bth$condition, levels = c("cs/bt","cs/bt/stm"))
+
+#deseq2 results 
+dds_stm = DESeq(dds_stm)
+stm_res = results(dds_stm)
+
+dds_bth = DESeq(dds_bth)
+bth_res = results(dds_bth)
+
+stm_res
+bth_res
+```
+
+MA Plots no shrinkage. 
+```{R}
+#with ggplot
+ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
+ggplot(ma_data_stm, aes(x = A, y = M)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") + 
+  xlim(c(.1, 1e4)) +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for STM Set")
+
+ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
+ggplot(ma_data_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for BTH Set")
+
+#base R
+plotMA(stm_res)
+plotMA(bth_res)
+```
+
+Shrinkage of LFC estimates for STM data from vignette. 
+```{R}
+apeglm_stm = lfcShrink(dds_stm, coef="condition_cs.bt.stm_vs_stm", type="apeglm")
+apeglm_stm
+
+norm_stm = lfcShrink(dds_stm, coef=2, type="normal")
+norm_stm
+
+ashr_stm = lfcShrink(dds_stm, coef=2, type="ashr")
+ashr_stm 
+```
+
+MA plots for STM with shrinkage. 
+```{R}
+plotMA(apeglm_stm)
+plotMA(norm_stm)
+plotMA(ashr_stm)
+```
+
+Shrinkage of LFC estimates for BTH data from vignette.
+```{R}
+apeglm_bth = lfcShrink(dds_bth, coef="condition_cs.bt.stm_vs_cs.bt", type="apeglm")
+apeglm_bth
+
+norm_bth = lfcShrink(dds_bth, coef=2, type="normal")
+norm_bth
+
+ashr_bth = lfcShrink(dds_bth, coef=2, type="ashr")
+ashr_bth
+```
+
+MA plots for STM with shrinkage. 
+```{R}
+plotMA(apeglm_bth)
+plotMA(norm_bth)
+plotMA(ashr_bth)
+``` 
+
+Normalization using Variance Stabilized Transformation (from Tessa)
+```{R}
+vsd_stm = vst(dds_stm)
+vsd_bth = vst(dds_bth)
+```
+
+MDS Plot for STM Group. Can't do vst on BTH group because not enough features. 
+```{r}
+#sample distances
+sample_dists_stm = assay(vsd_stm) %>%
+  t() %>%
+  dist() %>%
+  as.matrix()
+head(sample_dists_stm)
+
+#MDS values from distance matrix
+mds_data_stm = data.frame(cmdscale(sample_dists_stm))
+mds_stm = cbind(mds_data_stm, as.data.frame(colData(vsd_stm)))
+head(mds_stm)
+```
+
+Plot MDS for STM data
+```{R}
+ggplot(mds_stm, aes(X1, X2, shape = condition)) + 
+  geom_point(size = 3) +
+  theme_minimal()
+```
+
+
+
+
+
+
