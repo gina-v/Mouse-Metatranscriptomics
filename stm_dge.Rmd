@@ -24,17 +24,21 @@ library(ggplot2)
 ```
 
 ## Background
-```{r}
-df_stm_fc = read.delim("stm_counts_updated.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
-df_stm = df_stm_fc[c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam")]
+RNA-Sequencing data for Zhu et al., 2020 and Spiga et al., 2017 were collected at the same time. Here I am comparing the gene expression of Salmonella Typhimurium in two groups. Samples 278.1 - 278-5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum, Bacteriodes Thetaiotamicron VPI-5482, and Salmonella Typhimurium. Samples 279.1 - 279.5 are of a mouse gut (GRCm39) inoculated with Salmonella Typhimurium. 
 
-df_stm_fc
-df_stm
+### Prepping FeatureCounts table for Deseq2
+
+```{r}
+df_stm_fc = read.delim("stm_counts_1109.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_stm = df_stm_fc[c("X278.1_stm.sorted.bam",	"X278.2_stm.sorted.bam",	"X278.3_stm.sorted.bam",	"X278.4_stm.sorted.bam",	"X278.5_stm.sorted.bam",	"X279.1_stm.sorted.bam",	"X279.2_stm.sorted.bam",	"X279.3_stm.sorted.bam",	"X279.4_stm.sorted.bam",	"X279.5_stm.sorted.bam")]
+
+head(df_stm_fc)
+head(df_stm)
 ```
 
 ```{r}
 exp_stm = data.frame(
-  Column1 = c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam"), 
+  Column1 = c("X278.1_stm.sorted.bam",	"X278.2_stm.sorted.bam",	"X278.3_stm.sorted.bam",	"X278.4_stm.sorted.bam",	"X278.5_stm.sorted.bam",	"X279.1_stm.sorted.bam",	"X279.2_stm.sorted.bam",	"X279.3_stm.sorted.bam",	"X279.4_stm.sorted.bam",	"X279.5_stm.sorted.bam"), 
   Column2 = c("cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "stm", "stm", "stm", "stm", "stm")
 )
 colnames(exp_stm) = c("sample", "condition")
@@ -45,9 +49,15 @@ csv_exp_stm = read.csv("exp_stm.csv")
 csv_exp_stm
 ```
 
-```{r}
+### DeSeq2 Object
+I used the CSV with the experimental conditions and featurecounts table to make the DeSeq2 Object.
+
+```{r, include=FALSE}
 dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, design = ~ condition)
 ```
+
+### Results
+Before looking at the results. I filtered out samples with counts less than 10 and set the factor level so that the cs/bt/stm group is being compared to the "mock" group stm. Note on factor levels - alternatively, they can be set by using the contrast argument with *results*.
 
 ```{r}
 #keeping only genes with more than 10 counts
@@ -59,11 +69,14 @@ dds_stm$condition = factor(dds_stm$condition, levels = c("stm","cs/bt/stm"))
 
 #deseq2 results 
 dds_stm = DESeq(dds_stm)
+stm_res = results(dds_stm)
 
-stm_res
+head(stm_res)
 ```
 
-```{r}
+MA Plot of STM group DGE w/o shrinkage
+
+```{r, echo=FALSE}
 ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
 ggplot(ma_data_stm, aes(x = A, y = M)) +
   geom_point() +
@@ -73,42 +86,20 @@ ggplot(ma_data_stm, aes(x = A, y = M)) +
   ggtitle("MA Plot for STM Set")
 ```
 
-```{R}
+#### Different types of shrinkage and how it affects the MA Plot for DGE
+
+```{r, include=FALSE}
 apeglm_stm = lfcShrink(dds_stm, coef="condition_cs.bt.stm_vs_stm", type="apeglm")
-apeglm_stm
 
 norm_stm = lfcShrink(dds_stm, coef=2, type="normal")
-norm_stm
 
 ashr_stm = lfcShrink(dds_stm, coef=2, type="ashr")
-ashr_stm 
 ```
 
-```{r}
-ma_apelgm_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(apelgm_stm, normalized = TRUE)))
-ggplot(ma_apelgm_stm, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for STM Set w/ Apelgm Shrinkage")
-```
-
-```{r}
-ma_ashr_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(ashr_stm, normalized = TRUE)))
-ggplot(ma_ashr_stm, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for STM Set w/ Ashr Shrinkage")
-```
-
-```{r}
-ma_norm_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(norm_stm, normalized = TRUE)))
-ggplot(ma_norm_stm, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for STM Set w/ Normal Shrinkage")
+```{r, echo==FALSE}
+plotMA(apeglm_stm, main="apeglm")
+plotMA(norm_stm, main="norm")
+plotMA(ashr_stm, main="ashr")
 ```
 
 ```{r}
@@ -129,29 +120,8 @@ mds_stm = cbind(mds_data_stm, as.data.frame(colData(vsd_stm)))
 head(mds_stm)
 ```
 
-```{R}
+```{r, echo=FALSE}
 ggplot(mds_stm, aes(X1, X2, shape = condition)) + 
   geom_point(size = 3) +
   theme_minimal()
 ```
-
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
