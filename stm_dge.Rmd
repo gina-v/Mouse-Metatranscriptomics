@@ -1,0 +1,157 @@
+---
+title: "Differential Gene Expression of S. Tm"
+author: "Gina Vazquez"
+date: "2023-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE}
+library(SummarizedExperiment)
+library(tximeta)
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(pheatmap)
+library(tidyverse)
+library(IHW)
+library(ashr)
+library(ggplot2)
+```
+
+## Background
+```{r}
+df_stm_fc = read.delim("stm_counts_updated.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_stm = df_stm_fc[c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam")]
+
+df_stm_fc
+df_stm
+```
+
+```{r}
+exp_stm = data.frame(
+  Column1 = c("sam.278.1_stm.sorted.bam",	"sam.278.2_stm.sorted.bam",	"sam.278.3_stm.sorted.bam",	"sam.278.4_stm.sorted.bam",	"sam.278.5_stm.sorted.bam",	"sam.279.1_stm.sorted.bam",	"sam.279.2_stm.sorted.bam",	"sam.279.3_stm.sorted.bam",	"sam.279.4_stm.sorted.bam",	"sam.279.5_stm.sorted.bam"), 
+  Column2 = c("cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "stm", "stm", "stm", "stm", "stm")
+)
+colnames(exp_stm) = c("sample", "condition")
+exp_stm_path = "~/Documents/Prelim_GMMs/exp_stm.csv"
+write.csv(exp_stm, file = exp_stm_path, row.names = FALSE)
+csv_exp_stm = read.csv("exp_stm.csv")
+
+csv_exp_stm
+```
+
+```{r}
+dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, design = ~ condition)
+```
+
+```{r}
+#keeping only genes with more than 10 counts
+keep_stm = rowSums(counts(dds_stm)) >= 10 
+dds_stm = dds_stm[keep_stm, ]
+
+#setting factor levels
+dds_stm$condition = factor(dds_stm$condition, levels = c("stm","cs/bt/stm"))
+
+#deseq2 results 
+dds_stm = DESeq(dds_stm)
+
+stm_res
+```
+
+```{r}
+ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
+ggplot(ma_data_stm, aes(x = A, y = M)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") + 
+  xlim(c(.1, 1e4)) +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for STM Set")
+```
+
+```{R}
+apeglm_stm = lfcShrink(dds_stm, coef="condition_cs.bt.stm_vs_stm", type="apeglm")
+apeglm_stm
+
+norm_stm = lfcShrink(dds_stm, coef=2, type="normal")
+norm_stm
+
+ashr_stm = lfcShrink(dds_stm, coef=2, type="ashr")
+ashr_stm 
+```
+
+```{r}
+ma_apelgm_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(apelgm_stm, normalized = TRUE)))
+ggplot(ma_apelgm_stm, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for STM Set w/ Apelgm Shrinkage")
+```
+
+```{r}
+ma_ashr_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(ashr_stm, normalized = TRUE)))
+ggplot(ma_ashr_stm, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for STM Set w/ Ashr Shrinkage")
+```
+
+```{r}
+ma_norm_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(norm_stm, normalized = TRUE)))
+ggplot(ma_norm_stm, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for STM Set w/ Normal Shrinkage")
+```
+
+```{r}
+vsd_stm = vst(dds_stm)
+```
+
+```{r}
+#sample distances
+sample_dists_stm = assay(vsd_stm) %>%
+  t() %>%
+  dist() %>%
+  as.matrix()
+head(sample_dists_stm)
+
+#MDS values from distance matrix
+mds_data_stm = data.frame(cmdscale(sample_dists_stm))
+mds_stm = cbind(mds_data_stm, as.data.frame(colData(vsd_stm)))
+head(mds_stm)
+```
+
+```{R}
+ggplot(mds_stm, aes(X1, X2, shape = condition)) + 
+  geom_point(size = 3) +
+  theme_minimal()
+```
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
