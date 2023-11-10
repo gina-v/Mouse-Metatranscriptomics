@@ -24,18 +24,21 @@ library(ggplot2)
 ```
 
 ## Background
+RNA-Sequencing data for Zhu et al., 2020 and Spiga et al., 2017 were collected at the same time. Here I am comparing the gene expression of Bacteriodes Thetaiotamicron in two groups. Samples 275.1 - 275.5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum and Bacteriodes Thetaiotamicron VPI-5482. Samples 278.1 - 278-5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum, Bacteriodes Thetaiotamicron VPI-5482, and Salmonella Typhimurium. 
+
+### Prepping FeatureCounts table for Deseq2
 
 ```{r}
-df_bth_fc = read.delim("bth_counts.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
-df_bth = df_bth_fc[c("sam.ERR3374060_bth.sorted.bam",	"sam.ERR3374061_bth.sorted.bam",	"sam.ERR3374062_bth.sorted.bam",	"sam.ERR3374063_bth.sorted.bam",	"sam.ERR3374064_bth.sorted.bam",	"sam.ERR3374065_bth.sorted.bam",	"sam.ERR3374066_bth.sorted.bam",	"sam.ERR3374067_bth.sorted.bam",	"sam.ERR3374068_bth.sorted.bam",	"sam.ERR3374069_bth.sorted.bam")]
+df_bth_fc = read.delim("bth_counts_1109.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_bth = df_bth_fc[c("X275.1_bth.sorted.bam",	"X275.2_bth.sorted.bam",	"X275.3_bth.sorted.bam",	"X275.4_bth.sorted.bam",	"X275.5_bth.sorted.bam",	"X278.1_bth.sorted.bam",	"X278.2_bth.sorted.bam",	"X278.3_bth.sorted.bam",	"X278.4_bth.sorted.bam",	"X278.5_bth.sorted.bam")]
 
-df_bth_fc
-df_bth
+head(df_bth_fc)
+head(df_bth)
 ```
 
 ```{r}
 exp_bth = data.frame(
-  Column1 = c("sam/ERR3374060_bth.sorted.bam",	"sam/ERR3374061_bth.sorted.bam",	"sam/ERR3374062_bth.sorted.bam",	"sam/ERR3374063_bth.sorted.bam",	"sam/ERR3374064_bth.sorted.bam",	"sam/ERR3374065_bth.sorted.bam",	"sam/ERR3374066_bth.sorted.bam",	"sam/ERR3374067_bth.sorted.bam",	"sam/ERR3374068_bth.sorted.bam",	"sam/ERR3374069_bth.sorted.bam"),
+  Column1 = c("X275.1_bth.sorted.bam",	"X275.2_bth.sorted.bam",	"X275.3_bth.sorted.bam",	"X275.4_bth.sorted.bam",	"X275.5_bth.sorted.bam",	"X278.1_bth.sorted.bam",	"X278.2_bth.sorted.bam",	"X278.3_bth.sorted.bam",	"X278.4_bth.sorted.bam",	"X278.5_bth.sorted.bam"),
   Column2 = c("cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm" )
 )
 colnames(exp_bth) = c("sample", "condition")
@@ -46,9 +49,15 @@ csv_exp_bth = read.csv("exp_bth.csv")
 csv_exp_bth
 ```
 
-```{r}
+### DeSeq2 Object
+I used the CSV with the experimental conditions and featurecounts table to make the DeSeq2 Object. 
+
+```{r, include=FALSE}
 dds_bth = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
 ```
+
+### Results
+Before looking at the results. I filtered out samples with counts less than 10 and set the factor level so that the cs/bt/stm group is being compared to the "mock" group cs/bt. Note on factor levels - alternatively, they can be set by using the contrast argument with *results*.
 
 ```{r}
 #keeping only genes with more than 10 counts
@@ -62,10 +71,12 @@ dds_bth$condition = factor(dds_bth$condition, levels = c("cs/bt","cs/bt/stm"))
 dds_bth = DESeq(dds_bth)
 bth_res = results(dds_bth)
 
-bth_res
+head(bth_res)
 ```
 
-```{r}
+MA Plot of BTH group DGE w/o shrinkage
+
+```{r, echo=FALSE}
 ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
 ggplot(ma_data_bth, aes(y = M, x = A)) +
   geom_point() +
@@ -73,65 +84,22 @@ ggplot(ma_data_bth, aes(y = M, x = A)) +
   scale_x_continuous(trans='log10') +
   ggtitle("MA Plot for BTH Set")
 ```
+#### Different types of shrinkage and how it affects the MA Plot for DGE
 
-```{R}
+```{r, include=FALSE}
 apeglm_bth = lfcShrink(dds_bth, coef="condition_cs.bt.stm_vs_cs.bt", type="apeglm")
-apeglm_bth
 
 norm_bth = lfcShrink(dds_bth, coef=2, type="normal")
-norm_bth
 
 ashr_bth = lfcShrink(dds_bth, coef=2, type="ashr")
-ashr_bth
 ```
 
-```{r}
-ma_apelgm_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(apelgm_bth, normalized = TRUE)))
-ggplot(ma_apelgm_bth, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for BTH Set w/ Apelgm Shrinkage")
-```
-
-```{r}
-ma_ashr_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(ashr_bth, normalized = TRUE)))
-ggplot(ma_ashr_bth, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for BTH Set w/ Ashr Shrinkage")
-```
-
-```{r}
-ma_norm_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(norm_bth, normalized = TRUE)))
-ggplot(ma_norm_bth, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for BTH Set w/ Normal Shrinkage")
+```{r, echo=FALSE}
+plotMA(apeglm_bth, main="apeglm")
+plotMA(norm_bth, main="norm")
+plotMA(ashr_bth, main="ashr")
 ```
 
 ```{r}
 vsd_bth = vst(dds_bth)
 ```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
