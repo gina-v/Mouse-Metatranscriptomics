@@ -1,0 +1,137 @@
+---
+title: "Differential Gene Expression of B. Thetaiotamicron"
+author: "Gina Vazquez"
+date: "2023-11-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, include=FALSE}
+library(SummarizedExperiment)
+library(tximeta)
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(pheatmap)
+library(tidyverse)
+library(IHW)
+library(ashr)
+library(ggplot2)
+```
+
+## Background
+
+```{r}
+df_bth_fc = read.delim("bth_counts.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_bth = df_bth_fc[c("sam.ERR3374060_bth.sorted.bam",	"sam.ERR3374061_bth.sorted.bam",	"sam.ERR3374062_bth.sorted.bam",	"sam.ERR3374063_bth.sorted.bam",	"sam.ERR3374064_bth.sorted.bam",	"sam.ERR3374065_bth.sorted.bam",	"sam.ERR3374066_bth.sorted.bam",	"sam.ERR3374067_bth.sorted.bam",	"sam.ERR3374068_bth.sorted.bam",	"sam.ERR3374069_bth.sorted.bam")]
+
+df_bth_fc
+df_bth
+```
+
+```{r}
+exp_bth = data.frame(
+  Column1 = c("sam/ERR3374060_bth.sorted.bam",	"sam/ERR3374061_bth.sorted.bam",	"sam/ERR3374062_bth.sorted.bam",	"sam/ERR3374063_bth.sorted.bam",	"sam/ERR3374064_bth.sorted.bam",	"sam/ERR3374065_bth.sorted.bam",	"sam/ERR3374066_bth.sorted.bam",	"sam/ERR3374067_bth.sorted.bam",	"sam/ERR3374068_bth.sorted.bam",	"sam/ERR3374069_bth.sorted.bam"),
+  Column2 = c("cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm", "cs/bt/stm" )
+)
+colnames(exp_bth) = c("sample", "condition")
+exp_bth_path = "~/Documents/Prelim_GMMs/exp_bth.csv"
+write.csv(exp_bth, file = exp_bth_path, row.names = FALSE)
+csv_exp_bth = read.csv("exp_bth.csv")
+
+csv_exp_bth
+```
+
+```{r}
+dds_bth = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
+```
+
+```{r}
+#keeping only genes with more than 10 counts
+keep_bth = rowSums(counts(dds_bth)) >= 10
+dds_bth = dds_bth[keep_bth, ]
+
+#setting factor levels
+dds_bth$condition = factor(dds_bth$condition, levels = c("cs/bt","cs/bt/stm"))
+
+#deseq2 results 
+dds_bth = DESeq(dds_bth)
+bth_res = results(dds_bth)
+
+bth_res
+```
+
+```{r}
+ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
+ggplot(ma_data_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for BTH Set")
+```
+
+```{R}
+apeglm_bth = lfcShrink(dds_bth, coef="condition_cs.bt.stm_vs_cs.bt", type="apeglm")
+apeglm_bth
+
+norm_bth = lfcShrink(dds_bth, coef=2, type="normal")
+norm_bth
+
+ashr_bth = lfcShrink(dds_bth, coef=2, type="ashr")
+ashr_bth
+```
+
+```{r}
+ma_apelgm_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(apelgm_bth, normalized = TRUE)))
+ggplot(ma_apelgm_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for BTH Set w/ Apelgm Shrinkage")
+```
+
+```{r}
+ma_ashr_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(ashr_bth, normalized = TRUE)))
+ggplot(ma_ashr_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for BTH Set w/ Ashr Shrinkage")
+```
+
+```{r}
+ma_norm_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(norm_bth, normalized = TRUE)))
+ggplot(ma_norm_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot for BTH Set w/ Normal Shrinkage")
+```
+
+```{r}
+vsd_bth = vst(dds_bth)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
