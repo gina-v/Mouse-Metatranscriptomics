@@ -21,15 +21,21 @@ library(tidyverse)
 library(IHW)
 library(ashr)
 library(ggplot2)
+library("RColorBrewer")
 ```
 
-## Background
-RNA-Sequencing data for Zhu et al., 2020 and Spiga et al., 2017 were collected at the same time. Here I am comparing the gene expression of Bacteriodes Thetaiotamicron in two groups. Samples 275.1 - 275.5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum and Bacteriodes Thetaiotamicron VPI-5482. Samples 278.1 - 278-5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum, Bacteriodes Thetaiotamicron VPI-5482, and Salmonella Typhimurium. 
+## Overview
+
+RNA-Sequencing data for [Zhu et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32075741/) and [Spiga et al., 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5599368/) were collected at the same time. Here I am comparing the gene expression of Bacteriodes Thetaiotamicron in two groups. Samples 275.1 - 275.5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum and Bacteroides Thetaiotamicron VPI-5482. Samples 278.1 - 278.5 are of a mouse gut (GRCm39) inoculated with Clostridium symbiosum, Bacteriodes thetaiotamicron VPI-5482, and Salmonella Typhimurium.
+
+-   write central question - how stm infection affects...
+
+-   summarize the smk workflow
 
 ### Prepping FeatureCounts table for Deseq2
 
 ```{r}
-df_bth_fc = read.delim("bth_counts_1109.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_bth_fc = read.delim("bth_1110.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
 df_bth = df_bth_fc[c("X275.1_bth.sorted.bam",	"X275.2_bth.sorted.bam",	"X275.3_bth.sorted.bam",	"X275.4_bth.sorted.bam",	"X275.5_bth.sorted.bam",	"X278.1_bth.sorted.bam",	"X278.2_bth.sorted.bam",	"X278.3_bth.sorted.bam",	"X278.4_bth.sorted.bam",	"X278.5_bth.sorted.bam")]
 
 head(df_bth_fc)
@@ -50,19 +56,22 @@ csv_exp_bth
 ```
 
 ### DeSeq2 Object
-I used the CSV with the experimental conditions and featurecounts table to make the DeSeq2 Object. 
+
+I used the CSV with the experimental conditions and featurecounts table to make the DeSeq2 Object.
 
 ```{r, include=FALSE}
-dds_bth = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
+dds_bth_all = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
 ```
 
 ### Results
+
 Before looking at the results. I filtered out samples with counts less than 10 and set the factor level so that the cs/bt/stm group is being compared to the "mock" group cs/bt. Note on factor levels - alternatively, they can be set by using the contrast argument with *results*.
 
 ```{r}
 #keeping only genes with more than 10 counts
-keep_bth = rowSums(counts(dds_bth)) >= 10
-dds_bth = dds_bth[keep_bth, ]
+keep_bth = rowSums(counts(dds_bth_all)) >= 10
+dds_bth = dds_bth_all
+#dds_bth = dds_bth[keep_bth, ]
 
 #setting factor levels
 dds_bth$condition = factor(dds_bth$condition, levels = c("cs/bt","cs/bt/stm"))
@@ -84,6 +93,7 @@ ggplot(ma_data_bth, aes(y = M, x = A)) +
   scale_x_continuous(trans='log10') +
   ggtitle("MA Plot for BTH Set")
 ```
+
 #### Different types of shrinkage and how it affects the MA Plot for DGE
 
 ```{r, include=FALSE}
@@ -102,4 +112,56 @@ plotMA(ashr_bth, main="ashr")
 
 ```{r}
 vsd_bth = vst(dds_bth)
+```
+
+```{r}
+#sample distances
+sample_dists_bth = assay(vsd_bth) %>%
+  t() %>%
+  dist() %>%
+  as.matrix()
+head(sample_dists_bth)
+
+#MDS values from distance matrix
+mds_data_bth = data.frame(cmdscale(sample_dists_bth))
+mds_bth = cbind(mds_data_bth, as.data.frame(colData(vsd_bth)))
+head(mds_bth)
+```
+
+```{r, echo=FALSE}
+ggplot(mds_bth, aes(X1, X2, shape = condition)) + 
+  geom_point(size = 3) +
+  theme_minimal()
+```
+
+PCA Plot
+
+```{r, echo=FALSE}
+plotPCA(vsd_bth)
+```
+
+HeatMaps
+
+```{r, echo=FALSE}
+bth_ntd = normTransform(dds_bth)
+bth_select = order(rowMeans(counts(dds_bth,normalized=TRUE)),
+                   decreasing=TRUE)[1:20]
+bth_heat_df = as.data.frame(colData(dds_bth)[,c("condition","sample")])  
+pheatmap(assay(bth_ntd)[bth_select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=bth_heat_df)
+```
+
+HeatMap of Sample-to-Sample Distances
+
+```{r}
+bth_dist = dist(t(assay(vsd_bth)))
+
+bth_dist_matrix = as.matrix(bth_dist)
+rownames(bth_dist_matrix) = paste(vsd_bth$condition, vsd_bth$type, sep="-")
+colnames(bth_dist_matrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(bth_dist_matrix,
+         clustering_distance_rows=bth_dist,
+         clustering_distance_cols=bth_dist,
+         col=colors)
 ```

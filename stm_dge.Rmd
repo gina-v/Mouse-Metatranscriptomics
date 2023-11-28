@@ -21,15 +21,17 @@ library(tidyverse)
 library(IHW)
 library(ashr)
 library(ggplot2)
+library("RColorBrewer")
 ```
 
 ## Background
-RNA-Sequencing data for Zhu et al., 2020 and Spiga et al., 2017 were collected at the same time. Here I am comparing the gene expression of Salmonella Typhimurium in two groups. Samples 278.1 - 278-5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum, Bacteriodes Thetaiotamicron VPI-5482, and Salmonella Typhimurium. Samples 279.1 - 279.5 are of a mouse gut (GRCm39) inoculated with Salmonella Typhimurium. 
+
+RNA-Sequencing data for [Zhu et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32075741/) and [Spiga et al., 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5599368/) were collected at the same time. Here I am comparing the gene expression of Salmonella Typhimurium in two groups. Samples 278.1 - 278-5 are of a mouse gut (GRCm39) inoculated with Clostridium Symbiosum, Bacteriodes Thetaiotamicron VPI-5482, and Salmonella Typhimurium. Samples 279.1 - 279.5 are of a mouse gut (GRCm39) inoculated with Salmonella Typhimurium.
 
 ### Prepping FeatureCounts table for Deseq2
 
 ```{r}
-df_stm_fc = read.delim("stm_counts_1109.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
+df_stm_fc = read.delim("stm_1110.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
 df_stm = df_stm_fc[c("X278.1_stm.sorted.bam",	"X278.2_stm.sorted.bam",	"X278.3_stm.sorted.bam",	"X278.4_stm.sorted.bam",	"X278.5_stm.sorted.bam",	"X279.1_stm.sorted.bam",	"X279.2_stm.sorted.bam",	"X279.3_stm.sorted.bam",	"X279.4_stm.sorted.bam",	"X279.5_stm.sorted.bam")]
 
 head(df_stm_fc)
@@ -50,6 +52,7 @@ csv_exp_stm
 ```
 
 ### DeSeq2 Object
+
 I used the CSV with the experimental conditions and featurecounts table to make the DeSeq2 Object.
 
 ```{r, include=FALSE}
@@ -57,6 +60,7 @@ dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, desi
 ```
 
 ### Results
+
 Before looking at the results. I filtered out samples with counts less than 10 and set the factor level so that the cs/bt/stm group is being compared to the "mock" group stm. Note on factor levels - alternatively, they can be set by using the contrast argument with *results*.
 
 ```{r}
@@ -77,6 +81,7 @@ head(stm_res)
 MA Plot of STM group DGE w/o shrinkage
 
 ```{r, echo=FALSE}
+#TODO - filter dds results by p value and order by lfc and gene names in table 
 ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
 ggplot(ma_data_stm, aes(x = A, y = M)) +
   geom_point() +
@@ -124,4 +129,36 @@ head(mds_stm)
 ggplot(mds_stm, aes(X1, X2, shape = condition)) + 
   geom_point(size = 3) +
   theme_minimal()
+```
+
+PCA Plot
+
+```{r, echo=FALSE}
+plotPCA(vsd_stm)
+```
+
+HeatMaps
+
+```{r, echo=FALSE}
+stm_ntd = normTransform(dds_stm)
+stm_select = order(rowMeans(counts(dds_stm,normalized=TRUE)),
+                   decreasing=TRUE)[1:20]
+stm_heat_df = as.data.frame(colData(dds_stm)[,c("condition","sample")])  
+pheatmap(assay(stm_ntd)[stm_select,], cluster_rows=FALSE, show_rownames=FALSE,
+         cluster_cols=FALSE, annotation_col=stm_heat_df)
+```
+
+HeatMap of Sample-to-Sample Distances
+
+```{r}
+stm_dist = dist(t(assay(vsd_stm)))
+
+stm_dist_matrix = as.matrix(stm_dist)
+rownames(stm_dist_matrix) = paste(vsd_stm$condition, vsd_stm$type, sep="-")
+colnames(stm_dist_matrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(stm_dist_matrix,
+         clustering_distance_rows=stm_dist,
+         clustering_distance_cols=stm_dist,
+         col=colors)
 ```
