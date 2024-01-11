@@ -22,6 +22,7 @@ library(IHW)
 library(ashr)
 library(ggplot2)
 library("RColorBrewer")
+library(ggrepel)
 ```
 
 ## Project Overview
@@ -66,7 +67,7 @@ An alternative approach:
 
 Deseq2 calculates library size to determine the scaling factor for each sample based on the FeatureCounts table. Creating a FeatureCounts table with all aligned reads would retain the true library size which could effect he differential gene expression results.
 
-**Update** Hannah has made a workflow with these updates. I will provide update the effect of this workflow on the DGE results. 
+**Note** Hannah has made a workflow with these updates. I will update this document with a summary of the workflow and effects on DGE results. 
 
 ## Deseq2 Workflow
 
@@ -75,7 +76,6 @@ Deseq2 calculates library size to determine the scaling factor for each sample b
 ```{r}
 df_bth_fc = read.delim("bth_1110.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
 df_bth = df_bth_fc[c("X275.1_bth.sorted.bam",	"X275.2_bth.sorted.bam",	"X275.3_bth.sorted.bam",	"X275.4_bth.sorted.bam",	"X275.5_bth.sorted.bam",	"X278.1_bth.sorted.bam",	"X278.2_bth.sorted.bam",	"X278.3_bth.sorted.bam",	"X278.4_bth.sorted.bam",	"X278.5_bth.sorted.bam")]
-
 ```
 
 ### Make the DeSeq2 object
@@ -103,7 +103,9 @@ write.table(bth_res, file= "bth_results.txt")
 head(bth_res)
 ```
 
-```{r }
+### Sort Results 
+
+```{r}
 # Sort results by log2 fold change (assuming higher absolute log2 fold change is more interesting)
 res_sorted = bth_res[order(abs(bth_res$log2FoldChange), decreasing = TRUE), ]
 
@@ -112,7 +114,6 @@ significant_genes = subset(res_sorted, padj < 0.05)
 
 # View summary of significant genes
 summary(significant_genes)
-print(significant_genes)
 write.table(significant_genes, file = "bth_summary.txt")
 
 # Make a table of gene names
@@ -122,7 +123,7 @@ write.table(gene_names, file = "gene_names.txt", quote = FALSE, row.names = FALS
 
 ### MA Plot of BTH group without shrinkage
 
-```{r, echo=FALSE}
+```{r, warning=FALSE, message=FALSE}
 ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
 ggplot(ma_data_bth, aes(y = M, x = A)) +
   geom_point() +
@@ -134,19 +135,14 @@ ggplot(ma_data_bth, aes(y = M, x = A)) +
 ### MA Plot with Apeglm Shrinkage
 
 More information on [MDS shrinkage](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#moreshrink).
-```{r, include=FALSE}
+```{r, warning=FALSE, message=FALSE}
 apeglm_bth = lfcShrink(dds_bth, coef="condition_cs.bt.stm_vs_cs.bt", type="apeglm")
 
-plotMA(apeglm_bth, main="apeglm")
-ggplot(ma_data_bth, aes(y = M, x = A)) +
+ggplot(as.data.frame(apeglm_bth), aes(y = log2FoldChange, x = baseMean)) +
   geom_point() +
   labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
   scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot for BTH Set")
-```
-
-```{r, echo=FALSE}
-plotMA(apeglm_bth, main="apeglm")
+  ggtitle("MA Plot of BTH Set with Shrinkage")
 ```
 
 ### Normalization with Variance Stabilized Transformation
@@ -174,7 +170,7 @@ mds_bth = cbind(mds_data_bth, as.data.frame(colData(vsd_bth)))
 ### MDS Plot
 
 ```{r}
-ggplot(mds_bth, aes(X1, X2, shape = condition)) + 
+ggplot(mds_bth, aes(X1, X2, color = condition)) + 
   geom_point(size = 3) +
   theme_minimal()
 ```
@@ -185,15 +181,47 @@ ggplot(mds_bth, aes(X1, X2, shape = condition)) +
 plotPCA(vsd_bth)
 ```
 
+### Volcano Plot 
+
+```{r, warning=FALSE}
+bth_res_vol = data.frame(bth_res)
+# add a column of NAs
+bth_res_vol$diffexpressed <- "NO"
+# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+bth_res_vol$diffexpressed[bth_res_vol$log2FoldChange > 0.6 & bth_res_vol$pvalue < 0.05] <- "UP"
+# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+bth_res_vol$diffexpressed[bth_res_vol$log2FoldChange < -0.6 & bth_res_vol$pvalue < 0.05] <- "DOWN"
+
+# Now write down the name of genes beside the points...
+# Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
+bth_res_vol$delabel <- NA
+
+gene_names <- rownames(bth_res_vol)
+new_gene_names <- sub("gene-FE838_", "", gene_names)
+bth_res_vol$new_gene_names <- new_gene_names
+bth_res_vol$delabel[bth_res_vol$diffexpressed != "NO"] <- bth_res_vol$new_gene_names[bth_res_vol$diffexpressed != "NO"]
+
+ggplot(data=as.data.frame(bth_res_vol), aes(x = log2FoldChange, y = -log10(pvalue), col=diffexpressed, label=delabel)) +
+        geom_point() + 
+        theme_minimal() +
+        geom_text_repel() +
+        scale_color_manual(values=c("blue", "black", "red")) +
+        geom_vline(xintercept=c(-0.6, 0.6), col="red") +
+        geom_hline(yintercept=-log10(0.05), col="red")
+```
+
 ### HeatMap
 
 ```{r}
 bth_ntd = normTransform(dds_bth)
+
+# extract the top 20 genes with the highest mean expression 
 bth_select = order(rowMeans(counts(dds_bth,normalized=TRUE)),
                    decreasing=TRUE)[1:20]
+
 bth_heat_df = as.data.frame(colData(dds_bth)[,c("condition","sample")])  
-pheatmap(assay(bth_ntd)[bth_select,], cluster_rows=FALSE, show_rownames=TRUE,
-         cluster_cols=FALSE, annotation_col=bth_heat_df)
+pheatmap(assay(bth_ntd)[bth_select,], cluster_rows=TRUE, show_rownames=TRUE, show_colnames=TRUE,
+         cluster_cols=FALSE)
 ```
 
 ### HeatMap of Sample-to-Sample Distances
@@ -210,3 +238,8 @@ pheatmap(bth_dist_matrix,
          clustering_distance_cols=bth_dist,
          col=colors)
 ```
+
+### Additional Resources
+
+Further information on how to use DeSeq2 for metatranscriptomic analysis in R can be found [here](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#data-quality-assessment-by-sample-clustering-and-visualization).
+The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics).
