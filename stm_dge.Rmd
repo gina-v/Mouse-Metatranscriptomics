@@ -74,6 +74,7 @@ Deseq2 calculates library size to determine the scaling factor for each sample b
 ### Read in FeatureCounts Table
 
 ```{r}
+# The gene_name column cannot be the row names because there are repeat names 
 df_stm_fc = read.delim("stm_1110.txt", skip = 1, header = TRUE, row.names = 1, stringsAsFactors = FALSE)
 df_stm = df_stm_fc[c("X278.1_stm.sorted.bam",	"X278.2_stm.sorted.bam",	"X278.3_stm.sorted.bam",	"X278.4_stm.sorted.bam",	"X278.5_stm.sorted.bam",	"X279.1_stm.sorted.bam",	"X279.2_stm.sorted.bam",	"X279.3_stm.sorted.bam",	"X279.4_stm.sorted.bam",	"X279.5_stm.sorted.bam")]
 
@@ -84,7 +85,7 @@ head(df_stm)
 ### Make the DeSeq2 object
 
 The samples and conditions are saved in 'exp_stm.csv'. The FeatureCounts data frame and experimental design CSV are used to make the DeSeq2 object.
-```{r}
+```{r, warning=FALSE}
 csv_exp_stm = read.csv("exp_stm.csv")
 dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, design = ~ condition)
 ```
@@ -100,28 +101,30 @@ dds_stm$condition = factor(dds_stm$condition, levels = c("stm","cs/bt/stm"))
 # DeSeq2 results 
 dds_stm = DESeq(dds_stm)
 stm_res = results(dds_stm)
-head(stm_res)
+
+# Match gene names to results 
+stm_res_names <- stm_res
+stm_res_names$genenames <- df_stm_fc$gene_name[seq_along(stm_res[, 1])]
+head(stm_res_names)
+summary(stm_res_names)
 
 # Make a table of DeSeq2 results
-write.table(stm_res, file="stm_results.txt")
+write.table(stm_res_names, file="stm_results.txt")
 ```
 
 ### Sort Results
 
 ```{r}
-# Sort results by log2 fold change (assuming higher absolute log2 fold change is more interesting)
-res_sorted_stm = stm_res[order(abs(stm_res$log2FoldChange), decreasing = TRUE), ]
+# Sort results by log2 fold change
+res_sorted_stm = stm_res_names[order(abs(stm_res_names$log2FoldChange), decreasing = TRUE), ]
 
 # Subset significant results based on adjusted p-value threshold (e.g., 0.05)
 significant_genes_stm = subset(res_sorted_stm, padj < 0.05)
 
 # View summary of significant genes
 summary(significant_genes_stm)
-write.table(significant_genes_stm, file = "stm_summary.txt")
-
-# Make a table of gene names
-gene_names_stm = row.names(significant_genes_stm)
-write.table(gene_names_stm, file = "gene_names_stm.txt", quote = FALSE, row.names = FALSE)
+head(significant_genes_stm)
+write.table(significant_genes_stm, file = "stm_sorted_results.txt")
 ```
 
 ### MA Plot of STM group without shrinkage
@@ -140,14 +143,33 @@ ggplot(ma_data_stm, aes(x = A, y = M)) +
 
 More information on [MDS shrinkage](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#moreshrink).
 ```{r, warning=FALSE, message=FALSE}
+# shrink data
 apeglm_stm = lfcShrink(dds_stm, coef="condition_cs.bt.stm_vs_stm", type="apeglm")
+head(apeglm_stm)
 
-ggplot(as.data.frame(apeglm_stm), aes(y = log2FoldChange, x = baseMean)) +
-  geom_point() +
+# Match gene names to results 
+ma_stm_names <- as.data.frame(apeglm_stm)
+ma_stm_names$genenames <- df_stm_fc$gene_name[seq_along(apeglm_stm[, 1])]
+
+# Save MA Data in table 
+write.table(ma_stm_names, file="stm_ma_results.txt")
+
+# make ma plot 
+ggplot(as.data.frame(ma_stm_names), aes(y = log2FoldChange, x = baseMean)) +
+  geom_point(size=0.7) +
   labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
   scale_x_continuous(trans='log10') +
    ylim(c(-2, 2)) +
-  ggtitle("MA Plot of STM Set with Shrinkage")
+  ggtitle("MA Plot of STM Set with Shrinkage") +
+  geom_text_repel(
+    data = subset(ma_stm_names, log2FoldChange > 0.75 | log2FoldChange < -0.75),
+   # aes(label = genenames),
+    aes(label = ifelse(!is.na(genenames), genenames, rownames(ma_stm_names))),
+    box.padding = 0.5,
+    point.padding = 0.1,
+    segment.color = "grey",
+    segment.size = 0.2
+  )
 ```
 
 ### Normalization with Variance Stabilized Transformation
@@ -192,25 +214,26 @@ plotPCA(vsd_stm)
 
 ```{r, warning=FALSE}
 # make a copy of the deseq2 results data frame to modify for the plot 
-stm_res_vol = data.frame(stm_res)
+stm_res_vol = data.frame(stm_res_names)
+
 # add a column of NAs
 stm_res_vol$diffexpressed <- "NO"
+
 # if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
 stm_res_vol$diffexpressed[stm_res_vol$log2FoldChange > 0.6 & stm_res_vol$pvalue < 0.05] <- "UP"
+
 # if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
 stm_res_vol$diffexpressed[stm_res_vol$log2FoldChange < -0.6 & stm_res_vol$pvalue < 0.05] <- "DOWN"
 
-# Now write down the name of genes beside the points...
+# label the volcano plot points
 # Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
 stm_res_vol$delabel <- NA
 
-#add a column of gene names to stm_res_vol
-gene_names_stm <- rownames(stm_res_vol)
-stm_res_vol$gene_names_stm <- gene_names_stm
-stm_res_vol$delabel[stm_res_vol$diffexpressed != "NO"] <- stm_res_vol$gene_names_stm[stm_res_vol$diffexpressed != "NO"]
+#populate the delabel column with values from the genenames column 
+stm_res_vol$delabel[stm_res_vol$diffexpressed != "NO"] <- stm_res_vol$genenames[stm_res_vol$diffexpressed != "NO"]
 
 ggplot(data=as.data.frame(stm_res_vol), aes(x = log2FoldChange, y = -log10(pvalue), col=diffexpressed, label=delabel)) +
-        geom_point() + 
+        geom_point(size=0.5) + 
         theme_minimal() +
         geom_text_repel() +
         scale_color_manual(values=c("blue", "black", "red")) +
@@ -221,22 +244,42 @@ ggplot(data=as.data.frame(stm_res_vol), aes(x = log2FoldChange, y = -log10(pvalu
 ### HeatMap
 
 ```{r}
-stm_ntd = normTransform(dds_stm)
+# transform the raw count data from the DeSeq2 object
+stm_ntd <- normTransform(dds_stm)
 
-# extract the top 20 genes with the highest mean expression 
+#shorten the sample names in stm_ntd
+colnames(stm_ntd) <- sub("_stm.sorted.bam", "", colnames(stm_ntd))
+
+# extract the top 30 genes with the highest mean expression 
 stm_select = order(rowMeans(counts(dds_stm,normalized=TRUE)),
-                   decreasing=TRUE)[1:20]
+                   decreasing=TRUE)[1:30]
 
-stm_heat_df = as.data.frame(colData(dds_stm)[,c("condition","sample")])  
-pheatmap(assay(stm_ntd)[stm_select,], cluster_rows=TRUE, show_rownames=TRUE, show_colnames=TRUE,
-         cluster_cols=FALSE)
+# Create a subset of normalized and transformed data with only the top 30 genes based on mean expression level
+heatmap_stm = (assay(stm_ntd)[stm_select,])
+
+# Match gene names to results 
+heatmap_stm_names <- as.data.frame(heatmap_stm)
+heatmap_stm_names$genenames <- df_stm_fc$gene_name[seq_along(heatmap_stm[, 1])]
+
+# Assuming heatmap_stm_names is your data frame
+rownames_to_use <- rownames(heatmap_stm_names)
+row_indices <- grepl("^STM", rownames_to_use)
+
+# Replace row names starting with "STM" if the corresponding genenames value is not NA
+rownames_to_use[row_indices] <- ifelse(!is.na(heatmap_stm_names$genenames[row_indices]),
+                                       heatmap_stm_names$genenames[row_indices],
+                                       rownames_to_use[row_indices])
+
+# Use pheatmap with the modified row names
+pheatmap(heatmap_stm_names[, !colnames(heatmap_stm_names) %in% c("genenames")],
+         cluster_rows = TRUE, show_rownames = TRUE, show_colnames = TRUE, cluster_cols = FALSE,
+         labels_row = rownames_to_use)
 ```
 
 ### HeatMap of Sample-to-Sample Distances
 
 ```{r}
 stm_dist = dist(t(assay(vsd_stm)))
-
 stm_dist_matrix = as.matrix(stm_dist)
 rownames(stm_dist_matrix) = paste(vsd_stm$condition, vsd_stm$type, sep="-")
 colnames(stm_dist_matrix) <- NULL
