@@ -4,7 +4,7 @@
 
 **rnaseq_0922.smk**
 
-A workflow for preprocessing fastq files with fastp, bowtie2 alignment, and generating featurecounts. 
+A workflow for preprocessing fastq files with fastp, bowtie2 alignment, and generating featurecounts. Information on how to obtain the reference genomes and fastq files along with further details on the workflow can be found in the Rmd files. 
 
 **stm_dge.Rmd**
 
