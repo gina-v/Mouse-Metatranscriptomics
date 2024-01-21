@@ -27,7 +27,7 @@ library(ggrepel)
 
 ## Project Overview
 
--   paragraph summarizing takeaways from b theta paper and how now we're examining gene expression changes in b theta which cause the phenotypical changes seen in the paper. 
+The primary carbon source for anaerobic bacteria in the large intestine are complex glycans. Bacteria of the Bacteroidetes and Firmicutes phyla encompass the majority of the gut microbiota. Bacterial genomes from these phyla encode for various types of glycan degradation genes. The ability to degrade a variety of complex carbohydrates has been found to directly correlate with species abundance in the gut. Proteobacteria, such as *Salmonella enterica subsp. enterica* serovar Typhimurium, express a very limited amount of genes associated with glycan degradation suggesting that the mechanisms for gut colonization must be different from the glycan-foraging mechanisms used by native gut microbiota. Here, I will investigate what genes are differentially expressed in S. Tm in a defined minimal community of native microbiota in murine samples.
 
 ## Project Outline
 Here I am comparing the gene expression of *Salmonella enterica subsp. enterica* serovar Typhimurium in two groups. Samples 279.1 - 279.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Salmonella enterica subsp. enterica* serovar Typhimurium. Samples 278.1 - 278.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum, Bacteroides thetaiotaomicron VPI-5482*, and *Salmonella enterica subsp. enterica* serovar Typhimurium. 
@@ -79,7 +79,6 @@ df_stm_fc = read.delim("stm_1110.txt", skip = 1, header = TRUE, row.names = 1, s
 df_stm = df_stm_fc[c("X278.1_stm.sorted.bam",	"X278.2_stm.sorted.bam",	"X278.3_stm.sorted.bam",	"X278.4_stm.sorted.bam",	"X278.5_stm.sorted.bam",	"X279.1_stm.sorted.bam",	"X279.2_stm.sorted.bam",	"X279.3_stm.sorted.bam",	"X279.4_stm.sorted.bam",	"X279.5_stm.sorted.bam")]
 
 head(df_stm_fc)
-head(df_stm)
 ```
 
 ### Make the DeSeq2 object
@@ -87,11 +86,12 @@ head(df_stm)
 The samples and conditions are saved in 'exp_stm.csv'. The FeatureCounts data frame and experimental design CSV are used to make the DeSeq2 object.
 ```{r, warning=FALSE}
 csv_exp_stm = read.csv("exp_stm.csv")
+print(csv_exp_stm)
+
 dds_stm = DESeqDataSetFromMatrix(countData = df_stm, colData = csv_exp_stm, design = ~ condition)
 ```
 
 ## Results
-
 ### Differential Gene Expression
 
 ```{r, message=FALSE}
@@ -109,7 +109,7 @@ head(stm_res_names)
 summary(stm_res_names)
 
 # Make a table of DeSeq2 results
-write.table(stm_res_names, file="stm_results.txt")
+write.csv(stm_res_names, file="stm_results.csv")
 ```
 
 ### Sort Results
@@ -124,26 +124,14 @@ significant_genes_stm = subset(res_sorted_stm, padj < 0.05)
 # View summary of significant genes
 summary(significant_genes_stm)
 head(significant_genes_stm)
-write.table(significant_genes_stm, file = "stm_sorted_results.txt")
-```
-
-### MA Plot of STM group without shrinkage
-
-```{r, warning=FALSE, message=FALSE}
-ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
-ggplot(ma_data_stm, aes(x = A, y = M)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") + 
-  xlim(c(.1, 1e4)) +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot of STM Set")
+write.csv(significant_genes_stm, file = "stm_sorted_results.csv")
 ```
 
 ### MA Plot with Apeglm Shrinkage
 
 More information on [MDS shrinkage](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#moreshrink).
 ```{r, warning=FALSE, message=FALSE}
-# shrink data
+# Shrink data
 apeglm_stm = lfcShrink(dds_stm, coef="condition_cs.bt.stm_vs_stm", type="apeglm")
 head(apeglm_stm)
 
@@ -152,9 +140,9 @@ ma_stm_names <- as.data.frame(apeglm_stm)
 ma_stm_names$genenames <- df_stm_fc$gene_name[seq_along(apeglm_stm[, 1])]
 
 # Save MA Data in table 
-write.table(ma_stm_names, file="stm_ma_results.txt")
+write.csv(ma_stm_names, file="stm_ma_results.csv")
 
-# make ma plot 
+# Make ma plot 
 ggplot(as.data.frame(ma_stm_names), aes(y = log2FoldChange, x = baseMean)) +
   geom_point(size=0.7) +
   labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
@@ -183,14 +171,13 @@ vsd_stm = vst(dds_stm)
 
 Sample distances are calculated and used for an MDS plot to compare similarity in counts between samples.
 ```{r}
-#sample distances
+# Sample distances
 sample_dists_stm = assay(vsd_stm) %>%
   t() %>%
   dist() %>%
   as.matrix()
-head(sample_dists_stm)
 
-#MDS values from distance matrix
+# MDS values from distance matrix
 mds_data_stm = data.frame(cmdscale(sample_dists_stm))
 mds_stm = cbind(mds_data_stm, as.data.frame(colData(vsd_stm)))
 head(mds_stm)
@@ -213,24 +200,30 @@ plotPCA(vsd_stm)
 ### Volcano Plot 
 
 ```{r, warning=FALSE}
-# make a copy of the deseq2 results data frame to modify for the plot 
-stm_res_vol = data.frame(stm_res_names)
+# Make a copy of the deseq2 results data frame to modify for the plot 
+stm_res_vol = data.frame(apeglm_stm)
 
-# add a column of NAs
+# Add names
+stm_res_vol$genenames <- df_stm_fc$gene_name[seq_along(stm_res_vol[, 1])]
+
+# Add a column of NAs
 stm_res_vol$diffexpressed <- "NO"
 
-# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+# If log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
 stm_res_vol$diffexpressed[stm_res_vol$log2FoldChange > 0.6 & stm_res_vol$pvalue < 0.05] <- "UP"
 
-# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+# If log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
 stm_res_vol$diffexpressed[stm_res_vol$log2FoldChange < -0.6 & stm_res_vol$pvalue < 0.05] <- "DOWN"
 
-# label the volcano plot points
+# Label the volcano plot points
 # Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
 stm_res_vol$delabel <- NA
 
-#populate the delabel column with values from the genenames column 
+# Populate the delabel column with values from the genenames column 
 stm_res_vol$delabel[stm_res_vol$diffexpressed != "NO"] <- stm_res_vol$genenames[stm_res_vol$diffexpressed != "NO"]
+
+# Save volcano plot data as a table 
+write.csv(stm_res_vol, file="stm_vol_results.csv")
 
 ggplot(data=as.data.frame(stm_res_vol), aes(x = log2FoldChange, y = -log10(pvalue), col=diffexpressed, label=delabel)) +
         geom_point(size=0.5) + 
@@ -269,6 +262,8 @@ row_indices <- grepl("^STM", rownames_to_use)
 rownames_to_use[row_indices] <- ifelse(!is.na(heatmap_stm_names$genenames[row_indices]),
                                        heatmap_stm_names$genenames[row_indices],
                                        rownames_to_use[row_indices])
+# Save heatmap data as table
+write.csv(heatmap_stm_names, file = "stm_heat_results.csv")
 
 # Use pheatmap with the modified row names
 pheatmap(heatmap_stm_names[, !colnames(heatmap_stm_names) %in% c("genenames")],
@@ -280,9 +275,12 @@ pheatmap(heatmap_stm_names[, !colnames(heatmap_stm_names) %in% c("genenames")],
 
 ```{r}
 stm_dist = dist(t(assay(vsd_stm)))
+
 stm_dist_matrix = as.matrix(stm_dist)
+
 rownames(stm_dist_matrix) = paste(vsd_stm$condition, vsd_stm$type, sep="-")
-colnames(stm_dist_matrix) <- NULL
+colnames(stm_dist_matrix) <- sub("_stm.sorted.bam", "", colnames(stm_ntd))
+
 colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
 pheatmap(stm_dist_matrix,
          clustering_distance_rows=stm_dist,
@@ -294,3 +292,17 @@ pheatmap(stm_dist_matrix,
 
 Further information on how to use DeSeq2 for metatranscriptomic analysis in R can be found [here](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#data-quality-assessment-by-sample-clustering-and-visualization).
 The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics).
+
+### Appendix
+
+#### MA Plot of STM group without shrinkage
+
+```{r, warning=FALSE, message=FALSE}
+ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
+ggplot(ma_data_stm, aes(x = A, y = M)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") + 
+  xlim(c(.1, 1e4)) +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot of STM Set")
+```
