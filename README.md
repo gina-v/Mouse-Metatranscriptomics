@@ -30,4 +30,8 @@ Sample names and conditions for S. Tm differential gene expression.
 
 Sample names and conditions for B. thetaiotamicron differential gene expression. 
 
-The remaining csv files are raw data of the DeSeq2 results, results sorted by log2 fold change and filted by p-values <0.05, and raw data for MA plots, volcano plots, and heatmaps. 
+**prelim_DGE.Rmd** 
+
+A scratch work file. Ignore. 
+
+The remaining csv files are raw data of the DeSeq2 results, results sorted by log2 fold change and filted by p-values <0.05, and raw data for MA plots, volcano plots, and heatmaps.
