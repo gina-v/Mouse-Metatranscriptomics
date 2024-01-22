@@ -27,11 +27,11 @@ library(ggrepel)
 
 ## Project Overview
 
--   paragraph summarizing takeaways from b theta paper and how now we're examining gene expression changes in b theta which cause the phenotypical changes seen in the paper. 
+The mammalian gut microbiota is influenced by various factors such as alterations in diet, the introduction of drugs, and the onset of diseases. Numerous studies have explored mechanisms through which the gut microbiota responds to these stimuli. For example, in [Zhu et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32075741/) it was found that *Bacteroides thetaiotaomicron* utilizes xenosiderophores to acquire iron within an inflamed gut. Here, I will investigate the differential expression of genes in B. thetaiotamicron in response to a Salmonella Typhimurium (S. Tm) infection in a defined minimal community of native microbiota in murin samples. 
 
 ## Project Outline
 
-Here I am comparing the gene expression of *Bacteroides thetaiotaomicron VPI-5482* in two groups. Samples 275.1 - 275.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum* and *Bacteroides thetaiotaomicron VPI-5482*. Samples 278.1 - 278.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum, Bacteroides thetaiotaomicron VPI-5482*, and *Salmonella enterica* serovar Typhimurium.
+The differential gene expression of *Bacteroides thetaiotaomicron VPI-5482* in two groups will be compared. Samples 275.1 - 275.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum* and *Bacteroides thetaiotaomicron VPI-5482*. Samples 278.1 - 278.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum, Bacteroides thetaiotaomicron VPI-5482*, and *Salmonella enterica* serovar Typhimurium.
 The sequencing data used in this analysis are from two published papers by Sebastian Winter's lab. Note that mouse microbiome samples for [Zhu et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32075741/) and [Spiga et al., 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5599368/) were collected and processed at the same time. These data are not all publicly available through ENA hence why the naming convention of the samples are not tied to corresponding accession numbers. The data were acquired from the lab's box link and I kept the original, in-lab naming convention. When possible, the names of the samples will be matched to the GenBank/ENA accession numbers for public availability.
 
 ## Metatranscriptomics Summary
@@ -68,7 +68,6 @@ An alternative approach:
 Deseq2 calculates library size to determine the scaling factor for each sample based on the FeatureCounts table. Creating a FeatureCounts table with all aligned reads would retain the true library size which could effect he differential gene expression results.
 
 **Note** Hannah has made a workflow with these updates. I will update this document with a summary of the workflow and effects on DGE results. 
-
 ## Deseq2 Workflow
 
 ### Read in FeatureCounts Table
@@ -79,7 +78,6 @@ df_bth_fc = read.delim("bth_1110.txt", skip = 1, header = TRUE, row.names = 1, s
 df_bth = df_bth_fc[c("X275.1_bth.sorted.bam",	"X275.2_bth.sorted.bam",	"X275.3_bth.sorted.bam",	"X275.4_bth.sorted.bam",	"X275.5_bth.sorted.bam",	"X278.1_bth.sorted.bam",	"X278.2_bth.sorted.bam",	"X278.3_bth.sorted.bam",	"X278.4_bth.sorted.bam",	"X278.5_bth.sorted.bam")]
 
 head(df_bth_fc)
-head(df_bth)
 ```
 
 ### Make the DeSeq2 object
@@ -87,6 +85,7 @@ head(df_bth)
 The samples and conditions are saved in 'exp_bth.csv'. The FeatureCounts data frame and experimental design CSV are used to make the DeSeq2 object.  
 ```{r, warning=FALSE}
 csv_exp_bth = read.csv("exp_bth.csv")
+print(csv_exp_bth)
 dds_bth = DESeqDataSetFromMatrix(countData = df_bth, colData = csv_exp_bth, design = ~ condition)
 ```
 
@@ -105,12 +104,12 @@ bth_res = results(dds_bth)
 # Match gene names to results 
 bth_res_names <- bth_res
 bth_res_names$genenames <- df_bth_fc$gene_name[seq_along(bth_res[, 1])]
-head(bth_res_names)
-summary(bth_res_names)
 
 # Make a table of DeSeq2 results
-write.table(bth_res_names, file= "bth_results.txt")
+write.csv(bth_res_names, file= "bth_results.csv")
+
 head(bth_res_names)
+summary(bth_res_names)
 ```
 
 ### Sort Results 
@@ -125,18 +124,7 @@ significant_genes_bth = subset(res_sorted, padj < 0.05)
 # View summary of significant genes
 summary(significant_genes_bth)
 head(significant_genes_bth)
-write.table(significant_genes_bth, file = "bth_sorted_results.txt")
-```
-
-### MA Plot of BTH group without shrinkage
-
-```{r, warning=FALSE, message=FALSE}
-ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
-ggplot(ma_data_bth, aes(y = M, x = A)) +
-  geom_point() +
-  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
-  scale_x_continuous(trans='log10') +
-  ggtitle("MA Plot of BTH Set")
+write.csv(significant_genes_bth, file = "bth_sorted_results.csv")
 ```
 
 ### MA Plot with Apeglm Shrinkage
@@ -151,7 +139,7 @@ ma_bth_names <- as.data.frame(apeglm_bth)
 ma_bth_names$genenames <- df_bth_fc$gene_name[seq_along(apeglm_bth[, 1])]
 
 # Save MA Data in table 
-write.table(ma_bth_names, file="bth_ma_results.txt")
+write.csv(ma_bth_names, file="bth_ma_results.csv")
 
 # make ma plot
  ggplot(as.data.frame(ma_bth_names), aes(y = log2FoldChange, x = baseMean)) +
@@ -193,41 +181,45 @@ mds_data_bth = data.frame(cmdscale(sample_dists_bth))
 mds_bth = cbind(mds_data_bth, as.data.frame(colData(vsd_bth)))
 ```
 
-### MDS Plot
-
-```{r}
-ggplot(mds_bth, aes(X1, X2, color = condition)) + 
-  geom_point(size = 3) +
-  theme_minimal()
-```
-
 ### PCA Plot
 
 ```{r}
-plotPCA(vsd_bth)
+# Shorten names of samples 
+short_vsd_bth <- vsd_bth
+colnames(short_vsd_bth) <- sub("_bth.sorted.bam", "", colnames(vsd_bth))
+
+plotPCA(short_vsd_bth) + 
+  geom_text_repel(aes(label = colnames(short_vsd_bth)), size = 3, hjust = 1.3, vjust = -0.5, box.padding = 0.2, segment.size = 0) +
+  geom_point(size = 0.1)
 ```
 
 ### Volcano Plot 
 
 ```{r, warning=FALSE}
-# make a copy of the deseq2 results data frame to modify for the plot 
-bth_res_vol = data.frame(bth_res_names)
+# Make a copy of the deseq2 results data frame to modify for the plot 
+bth_res_vol = data.frame(apeglm_bth)
 
-# add a column of NAs
+# Add names
+bth_res_vol$genenames <- df_bth_fc$gene_name[seq_along(bth_res_vol[, 1])]
+
+# Add a column of NAs
 bth_res_vol$diffexpressed <- "NO"
 
-# if log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
+# If log2Foldchange > 0.6 and pvalue < 0.05, set as "UP" 
 bth_res_vol$diffexpressed[bth_res_vol$log2FoldChange > 0.6 & bth_res_vol$pvalue < 0.05] <- "UP"
 
-# if log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
+# If log2Foldchange < -0.6 and pvalue < 0.05, set as "DOWN"
 bth_res_vol$diffexpressed[bth_res_vol$log2FoldChange < -0.6 & bth_res_vol$pvalue < 0.05] <- "DOWN"
 
-# label the volcano plot points
+# Label the volcano plot points
 # Create a new column "delabel" to de, that will contain the name of genes differentially expressed (NA in case they are not)
 bth_res_vol$delabel <- NA
 
-#populate the delabel column with values from the genenames column 
+# Populate the delabel column with values from the genenames column 
 bth_res_vol$delabel[bth_res_vol$diffexpressed != "NO"] <- bth_res_vol$genenames[bth_res_vol$diffexpressed != "NO"]
+
+# Save volcano plot data as a table 
+write.csv(bth_res_vol, file="bth_vol_results.csv")
 
 ggplot(data=as.data.frame(bth_res_vol), aes(x = log2FoldChange, y = -log10(pvalue), col=diffexpressed, label=delabel)) +
         geom_point(size=0.5) +
@@ -268,6 +260,9 @@ rownames_to_use_bth[row_indices_bth] <- ifelse(!is.na(heatmap_bth_names$genename
                                        heatmap_bth_names$genenames[row_indices_bth],
                                        rownames_to_use_bth[row_indices_bth])
 
+# Save heatmap data as table
+write.csv(heatmap_bth_names, file = "bth_heat_results.csv")
+
 # Use pheatmap with the modified row names
 pheatmap(heatmap_bth_names[, !colnames(heatmap_bth_names) %in% c("genenames")],
          cluster_rows = TRUE, show_rownames = TRUE, show_colnames = TRUE, cluster_cols = FALSE,
@@ -280,16 +275,45 @@ pheatmap(heatmap_bth_names[, !colnames(heatmap_bth_names) %in% c("genenames")],
 bth_dist = dist(t(assay(vsd_bth)))
 
 bth_dist_matrix = as.matrix(bth_dist)
-rownames(bth_dist_matrix) = paste(vsd_bth$condition, vsd_bth$type, sep="-")
-colnames(bth_dist_matrix) <- NULL
+
+rownames(bth_dist_matrix) = paste(vsd_bth$condition, vsd_bth$type)
+colnames(bth_dist_matrix) <- sub("_bth.sorted.bam", "", colnames(vsd_bth))
+
 colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
 pheatmap(bth_dist_matrix,
          clustering_distance_rows=bth_dist,
          clustering_distance_cols=bth_dist,
-         col=colors)
+         col=colors,
+         show_colnames = TRUE)
 ```
 
-### Additional Resources
+## Additional Resources
 
 Further information on how to use DeSeq2 for metatranscriptomic analysis in R can be found [here](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#data-quality-assessment-by-sample-clustering-and-visualization).
-The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics).
+The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics). Refer to the README.md for list of the different files.
+
+## Appendix 
+
+### MDS Plot
+
+```{r}
+# Shorten names of samples 
+short_mds_bth <- mds_bth
+rownames(short_mds_bth) <- sub("_bth.sorted.bam", "", rownames(mds_bth))
+
+ggplot(short_mds_bth, aes(X1, X2, color = condition)) +
+  geom_point(size = 3) +
+  geom_text(aes(label = rownames(short_mds_bth)), size = 3, hjust = 1.4, vjust = -0.5) +
+  theme_minimal()
+```
+
+### MA Plot of BTH group without shrinkage
+
+```{r, warning=FALSE, message=FALSE}
+ma_data_bth = data.frame(M = bth_res$log2FoldChange, A = rowMeans(counts(dds_bth, normalized = TRUE)))
+ggplot(ma_data_bth, aes(y = M, x = A)) +
+  geom_point() +
+  labs(y = "Log2 Fold Change (M)", x = "Average Expression (A)") +
+  scale_x_continuous(trans='log10') +
+  ggtitle("MA Plot of BTH Set")
+```

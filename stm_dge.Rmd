@@ -27,10 +27,11 @@ library(ggrepel)
 
 ## Project Overview
 
-The primary carbon source for anaerobic bacteria in the large intestine are complex glycans. Bacteria of the Bacteroidetes and Firmicutes phyla encompass the majority of the gut microbiota. Bacterial genomes from these phyla encode for various types of glycan degradation genes. The ability to degrade a variety of complex carbohydrates has been found to directly correlate with species abundance in the gut. Proteobacteria, such as *Salmonella enterica subsp. enterica* serovar Typhimurium, express a very limited amount of genes associated with glycan degradation suggesting that the mechanisms for gut colonization must be different from the glycan-foraging mechanisms used by native gut microbiota. Here, I will investigate what genes are differentially expressed in S. Tm in a defined minimal community of native microbiota in murine samples.
+
+The dominant members of the large intestine belong to the Bacteroidetes and Firmicutes phyla. These anaerobic bacteria primarily rely on complex glycans as their main carbon source. Bacterial genomes from these phyla encode for an array of glycan degradation genes. Notably, the capacity to degrade a diverse complex carbohydrates is directly linked with species abundance in the gut. Proteobacteria, exemplified by *Salmonella enterica subsp. enterica* serovar Typhimurium, express a comparatively limited set of genes associated with glycan degradation. This suggests that the mechanisms employed by S. Tm for gut colonization must differ from the glycan-foraging strategies used by the native gut microbiota. Here, I will investigate genes that are differentially expressed in S. Tm within a defined minimal community of native microbiota in murine samples.
 
 ## Project Outline
-Here I am comparing the gene expression of *Salmonella enterica subsp. enterica* serovar Typhimurium in two groups. Samples 279.1 - 279.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Salmonella enterica subsp. enterica* serovar Typhimurium. Samples 278.1 - 278.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum, Bacteroides thetaiotaomicron VPI-5482*, and *Salmonella enterica subsp. enterica* serovar Typhimurium. 
+The gene expression of *Salmonella enterica subsp. enterica* serovar Typhimurium in two groups will be compared. Samples 279.1 - 279.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Salmonella enterica subsp. enterica* serovar Typhimurium. Samples 278.1 - 278.5 are biological replicates of a mouse gut (GRCm39) inoculated with *Clostridium symbiosum, Bacteroides thetaiotaomicron VPI-5482*, and *Salmonella enterica subsp. enterica* serovar Typhimurium. 
 
 The sequencing data used in this analysis are from two published papers by Sebastian Winter's lab. Note that mouse microbiome samples for [Zhu et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32075741/) and [Spiga et al., 2017](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC5599368/) were collected and processed at the same time. These data are not all publicly available through ENA hence why the naming convention of the samples are not tied to corresponding accession numbers. The data were acquired from the lab's box link and I kept the original, in-lab naming convention. When possible, the names of the samples will be matched to the GenBank/ENA accession numbers for public availability.
 
@@ -183,18 +184,16 @@ mds_stm = cbind(mds_data_stm, as.data.frame(colData(vsd_stm)))
 head(mds_stm)
 ```
 
-### MDS Plot
-
-```{r}
-ggplot(mds_stm, aes(X1, X2, color = condition)) + 
-  geom_point(size = 3) +
-  theme_minimal()
-```
-
 ### PCA Plot
 
 ```{r}
-plotPCA(vsd_stm)
+# Shorten names of samples 
+short_vsd_stm <- vsd_stm
+colnames(short_vsd_stm) <- sub("_stm.sorted.bam", "", colnames(vsd_stm))
+
+# Make PCA 
+plotPCA(short_vsd_stm) + 
+  geom_text(aes(label = colnames(short_vsd_stm)), size = 3, hjust = 1.3, vjust = -0.5)
 ```
 
 ### Volcano Plot 
@@ -288,14 +287,28 @@ pheatmap(stm_dist_matrix,
          col=colors)
 ```
 
-### Additional Resources
+## Additional Resources
 
 Further information on how to use DeSeq2 for metatranscriptomic analysis in R can be found [here](https://bioconductor.org/packages/release/bioc/vignettes/DESeq2/inst/doc/DESeq2.html#data-quality-assessment-by-sample-clustering-and-visualization).
-The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics).
+The link to the repository for this project can be found [here](https://github.com/GinaVazquez/Mouse-Metatranscriptomics). Refer to the README.md for list of the different files. 
 
-### Appendix
+## Appendix
 
-#### MA Plot of STM group without shrinkage
+### MDS Plot
+
+```{r}
+# Shorten names of samples 
+short_mds_stm <- mds_stm
+rownames(short_mds_stm) <- sub("_stm.sorted.bam", "", rownames(mds_stm))
+
+# Make MDS plot
+ggplot(short_mds_stm, aes(X1, X2, color = condition)) +
+  geom_point(size = 3) +
+  geom_text(aes(label = rownames(short_mds_stm)), size = 3, hjust = 1.2, vjust = -0.5) +
+  theme_minimal()
+```
+
+### MA Plot of STM group without shrinkage
 
 ```{r, warning=FALSE, message=FALSE}
 ma_data_stm = data.frame(M = stm_res$log2FoldChange, A = rowMeans(counts(dds_stm, normalized = TRUE)))
